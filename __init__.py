@@ -39,15 +39,15 @@ import supybot.world as world
 # in here if you're keeping the plugin in CVS or some similar system.
 __version__ = ""
 
-# XXX Replace this with an appropriate author or supybot.Author instance.
-__author__ = supybot.Author('Mike Mueller', 'machrider', 'mike@subfocal.net')
+# Replace this with an appropriate author or supybot.Author instance.
+__author__ = supybot.Author('Mike Mueller', 'mmueller', 'mike.mueller@panopticdev.com')
 
 # This is a dictionary mapping supybot.Author instances to lists of
 # contributions.
 __contributors__ = {}
 
 # This is a url where the most recent plugin package can be downloaded.
-__url__ = '' # 'http://supybot.com/Members/yourname/Git/download'
+__url__ = 'http://github.com/mmueller/supybot-git'
 
 import config
 import plugin

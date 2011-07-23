@@ -31,7 +31,6 @@ def configure(advanced):
     from supybot.questions import expect, anything, something, yn
     conf.registerPlugin('Git', True)
 
-
 Git = conf.registerPlugin('Git')
 
 conf.registerGlobalValue(Git, 'configFile',
