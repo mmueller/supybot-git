@@ -248,8 +248,9 @@ class Git(callbacks.Plugin):
             ircs = [irc for irc in world.ircs
                     if repository.channel in irc.state.channels]
             if not ircs:
-                self._error("Can't find channel: " + repository.channel)
-                return
+                self._error("Skipping poll on repository %s: not in channel: %s"
+                    % (repository.long_name, repository.channel))
+                continue
             irc = ircs[0]
 
             try:
