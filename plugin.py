@@ -186,7 +186,7 @@ class Git(callbacks.Plugin):
         try:
             self._read_config()
             self._start_polling()
-            irc.noReply()
+            irc.replySuccess()
         except Exception, e:
             irc.reply('Error reloading config: ' + str(e))
 
