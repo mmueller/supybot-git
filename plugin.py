@@ -85,6 +85,13 @@ class Repository:
         "Contact git repository and update last_commit appropriately."
         self.repo.git.fetch()
 
+    def get_commit(self, sha):
+        "Fetch the commit with the given SHA.  Returns None if not found."
+        try:
+            return self.repo.commit(sha)
+        except ValueError:
+            return None
+
     def get_new_commits(self):
         result = self.repo.commits_between(self.last_commit, self.branch)
         self.last_commit = self.repo.commit(self.branch)
@@ -163,9 +170,11 @@ class Repository:
             result.append(outline)
         return result
 
-class Git(callbacks.Plugin):
+class Git(callbacks.PluginRegexp):
     "Please see the README file to configure and use this plugin."
+
     threaded = True
+    unaddressedRegexps = [ '_snarf' ]
 
     def __init__(self, irc):
         self.__parent = super(Git, self)
@@ -273,6 +282,17 @@ class Git(callbacks.Plugin):
         for section in parser.sections():
             self.repositories.append(
                 Repository(repo_dir, section, parser.items(section)))
+
+    def _snarf(self, irc, msg, match):
+        r"""\b(?P<sha>[0-9a-f]{6,40})\b"""
+        sha = match.group('sha')
+        channel = msg.args[0]
+        repositories = filter(lambda r: r.channel == channel, self.repositories)
+        for repository in repositories:
+            commit = repository.get_commit(sha)
+            if commit:
+                self._display_commits(irc, repository, [commit])
+                break
 
     def _start_polling(self):
         self.poll_period = self.registryValue('pollPeriod')
