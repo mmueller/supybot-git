@@ -244,7 +244,6 @@ class Git(callbacks.PluginRegexp):
         for commit in commits:
             lines = repository.format_message(commit)
             for line in lines:
-                print line
                 msg = ircmsgs.privmsg(repository.channel, line)
                 irc.queueMsg(msg)
 
