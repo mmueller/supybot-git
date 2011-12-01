@@ -241,7 +241,16 @@ class Git(callbacks.PluginRegexp):
 
     def _display_commits(self, irc, repository, commits):
         "Display a nicely-formatted list of commits in a channel."
-        for commit in commits:
+        commits = list(commits)
+        commits_at_once = self.registryValue('maxCommitsAtOnce')
+        if len(commits) > commits_at_once:
+            irc.queueMsg(msg.ircmsgs.privmsg(repository.channel,
+                         "Showing latest %d of %d commits to %s..." % (
+                commits_at_once,
+                len(commits),
+                repository.long_name,
+            )))
+        for commit in commits[-commits_at_once:]:
             lines = repository.format_message(commit)
             for line in lines:
                 msg = ircmsgs.privmsg(repository.channel, line)
