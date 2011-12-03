@@ -244,7 +244,7 @@ class Git(callbacks.PluginRegexp):
         commits = list(commits)
         commits_at_once = self.registryValue('maxCommitsAtOnce')
         if len(commits) > commits_at_once:
-            irc.queueMsg(msg.ircmsgs.privmsg(repository.channel,
+            irc.queueMsg(ircmsgs.privmsg(repository.channel,
                          "Showing latest %d of %d commits to %s..." % (
                 commits_at_once,
                 len(commits),
