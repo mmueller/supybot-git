@@ -234,7 +234,7 @@ class Git(callbacks.PluginRegexp):
         if channel != repository.channel:
             irc.reply('Sorry, not allowed in this channel.')
             return
-        commits = repository.get_recent_commits(count)
+        commits = repository.get_recent_commits(count)[::-1]
         self._display_commits(irc, repository, commits)
     shortlog = wrap(shortlog,
         ['channel', 'somethingWithoutSpaces', optional('int', 1)])
