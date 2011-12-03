@@ -110,16 +110,22 @@ Supybot configuration framework.  For relative paths, they are relative to
 where Supybot is invoked.  If you're unsure what that might be, just set them
 to absolute paths.  The settings are found within supybot.plugins.Git:
 
-configFile: Path to the INI file.
-            Default: git.ini
+configFile:       Path to the INI file.
+                  Default: git.ini
 
-repoDir:    Path where local clones of repositories will be kept.  This is a
-            directory that will contain a copy of all repository being tracked.
-            Default: git_repositories
+repoDir:          Path where local clones of repositories will be kept.  This
+                  is a directory that will contain a copy of all repository
+                  being tracked.
+                  Default: git_repositories
 
-pollPeriod: How often (in seconds) that repositories will be polled for
-            changes.  Zero disables periodic polling.
-            Default: 120
+pollPeriod:       How often (in seconds) that repositories will be polled for
+                  changes.  Zero disables periodic polling.
+                  Default: 120
+
+maxCommitsAtOnce: Limit how many commits can be displayed in one update.  This
+                  will affect output from the periodic polling as well as the
+                  shortlog command.
+                  Default: 5
 
 How Notification Works
 ----------------------

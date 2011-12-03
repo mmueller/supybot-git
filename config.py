@@ -46,7 +46,7 @@ conf.registerGlobalValue(Git, 'pollPeriod',
         will be polled for changes.  Set to zero to disable polling."""))
 
 conf.registerGlobalValue(Git, 'maxCommitsAtOnce',
-    registry.NonNegativeInteger(3, """How many commits are displayed at
+    registry.NonNegativeInteger(5, """How many commits are displayed at
         once from each repository."""))
 
 # vim:set shiftwidth=4 tabstop=4 expandtab textwidth=79:
