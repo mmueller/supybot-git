@@ -93,12 +93,13 @@ class Repository:
             return None
 
     def get_new_commits(self):
-        result = self.repo.commits_between(self.last_commit, self.branch)
+        rev = "%s..%s" % (self.last_commit, self.branch)
+        result = list(self.repo.iter_commits(rev))
         self.last_commit = self.repo.commit(self.branch)
         return result
 
     def get_recent_commits(self, count):
-        return self.repo.commits(start=self.branch, max_count=count)
+        return list(self.repo.iter_commits(self.branch))[:count]
 
     def format_link(self, commit):
         "Return a link to view a given commit, based on config setting."
@@ -107,9 +108,9 @@ class Repository:
         for c in self.commit_link:
             if escaped:
                 if c == 'c':
-                    result += commit.id[0:7]
+                    result += commit.hexsha[0:7]
                 elif c == 'C':
-                    result += commit.id
+                    result += commit.hexsha
                 else:
                     result += c
                 escaped = False
@@ -130,8 +131,8 @@ class Repository:
         subst = {
             'a': commit.author.name,
             'b': self.branch[self.branch.rfind('/')+1:],
-            'c': commit.id[0:7],
-            'C': commit.id,
+            'c': commit.hexsha[0:7],
+            'C': commit.hexsha,
             'e': commit.author.email,
             'l': self.format_link(commit),
             'm': commit.message.split('\n')[0],
