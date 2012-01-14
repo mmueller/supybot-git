@@ -36,6 +36,8 @@ import os
 import subprocess
 import traceback
 
+API_VERSION = -1
+
 class Repository:
     "Represents a git repository being monitored."
 
@@ -44,6 +46,8 @@ class Repository:
         Initialize with a repository with the given name and list of (name,
         value) pairs from the config section.
         """
+        if API_VERSION == -1:
+            raise Exception("Git-python API version uninitialized.")
         required_values = [ 'short name', 'url', 'channel' ]
         optional_values = [ 'branch', 'commit link', 'commit message' ]
 
@@ -92,13 +96,32 @@ class Repository:
         except ValueError:
             return None
 
+    def get_commit_id(self, commit):
+        if API_VERSION == 1:
+            return commit.id
+        elif API_VERSION == 3:
+            return commit.hexsha
+        else:
+            raise Exception("Unsupported API version: %d" % API_VERSION)
+
     def get_new_commits(self):
-        result = self.repo.commits_between(self.last_commit, self.branch)
+        if API_VERSION == 1:
+            result = self.repo.commits_between(self.last_commit, self.branch)
+        elif API_VERSION == 3:
+            rev = "%s..%s" % (self.last_commit, self.branch)
+            result = list(self.repo.iter_commits(rev))
+        else:
+            raise Exception("Unsupported API version: %d" % API_VERSION)
         self.last_commit = self.repo.commit(self.branch)
         return result
 
     def get_recent_commits(self, count):
-        return self.repo.commits(start=self.branch, max_count=count)
+        if API_VERSION == 1:
+            return self.repo.commits(start=self.branch, max_count=count)
+        elif API_VERSION == 3:
+            return list(self.repo.iter_commits(self.branch))[:count]
+        else:
+            raise Exception("Unsupported API version: %d" % API_VERSION)
 
     def format_link(self, commit):
         "Return a link to view a given commit, based on config setting."
@@ -107,9 +130,9 @@ class Repository:
         for c in self.commit_link:
             if escaped:
                 if c == 'c':
-                    result += commit.id[0:7]
+                    result += self.get_commit_id(commit)[0:7]
                 elif c == 'C':
-                    result += commit.id
+                    result += self.get_commit_id(commit)
                 else:
                     result += c
                 escaped = False
@@ -130,8 +153,8 @@ class Repository:
         subst = {
             'a': commit.author.name,
             'b': self.branch[self.branch.rfind('/')+1:],
-            'c': commit.id[0:7],
-            'C': commit.id,
+            'c': self.get_commit_id(commit)[0:7],
+            'C': self.get_commit_id(commit),
             'e': commit.author.email,
             'l': self.format_link(commit),
             'm': commit.message.split('\n')[0],
@@ -177,6 +200,14 @@ class Git(callbacks.PluginRegexp):
     unaddressedRegexps = [ '_snarf' ]
 
     def __init__(self, irc):
+        global API_VERSION
+        if not git.__version__.startswith('0.'):
+            raise Exception("Unsupported git-python version.")
+        API_VERSION = int(git.__version__[2])
+        if not API_VERSION in [1, 3]:
+            self._error('git-python version %s unrecognized, using 0.3.x API.'
+                    % git.__version__)
+            API_VERSION = 3
         self.__parent = super(Git, self)
         self.__parent.__init__(irc)
         self._read_config()
