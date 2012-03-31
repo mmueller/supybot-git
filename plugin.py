@@ -31,14 +31,36 @@ import supybot.log as log
 import supybot.world as world
 
 import ConfigParser
+from functools import wraps
 import git
 import os
-import subprocess
+import threading
+import time
 import traceback
 
 API_VERSION = -1
 
-class Repository:
+def log_info(message):
+    log.info("Git: " + message)
+
+def log_error(message):
+    log.error("Git: " + message)
+
+def synchronized(tlockname):
+    """A decorator to place an instance based lock around a method """
+    def _synched(func):
+        @wraps(func)
+        def _synchronizer(self, *args, **kwargs):
+            tlock = self.__getattribute__(tlockname)
+            tlock.acquire()
+            try:
+                return func(self, *args, **kwargs)
+            finally:
+                tlock.release()
+        return _synchronizer
+    return _synched
+
+class Repository(object):
     "Represents a git repository being monitored."
 
     def __init__(self, repo_dir, long_name, config_values):
@@ -61,12 +83,14 @@ class Repository:
                 raise Exception('Section %s contains unrecognized value: %s' %
                         (long_name, name))
 
+        self.lock = threading.RLock()
         self.long_name = long_name
         self.branch = 'master'
         self.commit_link = ''
         self.commit_message = '[%s|%b|%a] %m'
         self.last_commit = None
         self.repo = None
+        self.errors = []
 
         for name, value in config_values:
             self.__dict__[name.replace(' ', '_')] = value
@@ -76,8 +100,10 @@ class Repository:
             os.makedirs(repo_dir)
         self.path = os.path.join(repo_dir, self.short_name)
 
+        # TODO: Move this to GitWatcher (separate thread)
         self.clone()
 
+    @synchronized('lock')
     def clone(self):
         "If the repository doesn't exist on disk, clone it."
         if not os.path.exists(self.path):
@@ -85,10 +111,12 @@ class Repository:
         self.repo = git.Repo(self.path)
         self.last_commit = self.repo.commit(self.branch)
 
+    @synchronized('lock')
     def fetch(self):
         "Contact git repository and update last_commit appropriately."
         self.repo.git.fetch()
 
+    @synchronized('lock')
     def get_commit(self, sha):
         "Fetch the commit with the given SHA.  Returns None if not found."
         try:
@@ -96,6 +124,7 @@ class Repository:
         except ValueError:
             return None
 
+    @synchronized('lock')
     def get_commit_id(self, commit):
         if API_VERSION == 1:
             return commit.id
@@ -104,6 +133,7 @@ class Repository:
         else:
             raise Exception("Unsupported API version: %d" % API_VERSION)
 
+    @synchronized('lock')
     def get_new_commits(self):
         if API_VERSION == 1:
             result = self.repo.commits_between(self.last_commit, self.branch)
@@ -115,6 +145,7 @@ class Repository:
         self.last_commit = self.repo.commit(self.branch)
         return result
 
+    @synchronized('lock')
     def get_recent_commits(self, count):
         if API_VERSION == 1:
             return self.repo.commits(start=self.branch, max_count=count)
@@ -123,6 +154,7 @@ class Repository:
         else:
             raise Exception("Unsupported API version: %d" % API_VERSION)
 
+    @synchronized('lock')
     def format_link(self, commit):
         "Return a link to view a given commit, based on config setting."
         result = ''
@@ -142,6 +174,7 @@ class Repository:
                 result += c
         return result
 
+    @synchronized('lock')
     def format_message(self, commit):
         """
         Generate an formatted message for IRC from the given commit, using
@@ -193,11 +226,23 @@ class Repository:
             result.append(outline)
         return result
 
+    @synchronized('lock')
+    def record_error(self, e):
+        "Save the exception 'e' for future error reporting."
+        self.errors.append(e)
+
+    @synchronized('lock')
+    def get_errors(self):
+        "Return a list of exceptions that have occurred since last get_errors."
+        result = self.errors
+        self.errors = []
+        return result
+
 class Git(callbacks.PluginRegexp):
     "Please see the README file to configure and use this plugin."
 
     threaded = True
-    unaddressedRegexps = [ '_snarf' ]
+    regexps = [ '_snarf' ]
 
     def __init__(self, irc):
         global API_VERSION
@@ -205,11 +250,12 @@ class Git(callbacks.PluginRegexp):
             raise Exception("Unsupported git-python version.")
         API_VERSION = int(git.__version__[2])
         if not API_VERSION in [1, 3]:
-            self._error('git-python version %s unrecognized, using 0.3.x API.'
+            log_error('git-python version %s unrecognized, using 0.3.x API.'
                     % git.__version__)
             API_VERSION = 3
         self.__parent = super(Git, self)
         self.__parent.__init__(irc)
+        self.fetcher = None
         self._read_config()
         self._start_polling()
 
@@ -287,27 +333,44 @@ class Git(callbacks.PluginRegexp):
                 msg = ircmsgs.privmsg(repository.channel, line)
                 irc.queueMsg(msg)
 
-    def _error(self, message):
-        log.error("Git: " + message)
-
     def _poll(self):
+        # Note that polling happens in two steps:
+        #
+        # 1. The GitFetcher class, running its own poll loop, fetches
+        #    repositories to keep the local copies up to date.
+        # 2. This _poll occurs, and looks for new commits in those local
+        #    copies.  (Therefore this function should be quick. If it is
+        #    slow, it may block the entire bot.)
         for repository in self.repositories:
             # Find the channel among IRC connections (first found will win)
             ircs = [irc for irc in world.ircs
                     if repository.channel in irc.state.channels]
             if not ircs:
-                self._error("Skipping poll on repository %s: not in channel: %s"
+                log_info("Skipping %s: not in channel: %s"
                     % (repository.long_name, repository.channel))
                 continue
             irc = ircs[0]
 
-            try:
-                repository.fetch()
-                commits = repository.get_new_commits()
-                self._display_commits(irc, repository, commits)
-            except Exception, e:
-                self._error('Exception polling repository %s: %s' %
-                        (repository.short_name, str(e)))
+            # Manual non-blocking lock calls here to avoid potentially long
+            # waits (if it fails, hope for better luck in the next _poll).
+            if repository.lock.acquire(blocking=False):
+                try:
+                    errors = repository.get_errors()
+                    for e in errors:
+                        log_error('Unable to fetch %s: %s' %
+                            (repository.long_name, str(e)))
+                    commits = repository.get_new_commits()
+                    self._display_commits(irc, repository, commits)
+                except Exception, e:
+                    log_error('Exception in _poll repository %s: %s' %
+                            (repository.short_name, str(e)))
+                finally:
+                    repository.lock.release()
+            else:
+                log.info('Unable to check repository %s: Locked.' %
+                    repository.long_name)
+        for irc, channel, text in messages:
+            irc.queueMsg(ircmsgs.privmsg(channel, text))
         new_period = self.registryValue('pollPeriod')
         if new_period != self.poll_period:
             _stop_polling()
@@ -336,12 +399,72 @@ class Git(callbacks.PluginRegexp):
     def _start_polling(self):
         self.poll_period = self.registryValue('pollPeriod')
         if self.poll_period:
+            self.fetcher = GitFetcher(self.repositories, self.poll_period)
+            self.fetcher.start()
             schedule.addPeriodicEvent(
                 self._poll, self.poll_period, now=False, name=self.name())
 
     def _stop_polling(self):
-        if self.poll_period:
+        # Never allow an exception to propagate since this is called in die()
+        if self.fetcher:
+            try:
+                self.fetcher.stop()
+                self.fetcher.join() # This might take time, but it's safest.
+            except Exception, e:
+                log_error('Stopping fetcher: %s' % str(e))
+            self.fetcher = None
+        try:
             schedule.removeEvent(self.name())
+        except KeyError:
+            pass
+        except Exception, e:
+            log_error('Stopping scheduled task: %s' % str(e))
+
+class GitFetcher(threading.Thread):
+    "A thread object to perform long-running Git operations."
+
+    # I don't know of any way to shut down a thread except to have it
+    # check a variable very frequently.
+    SHUTDOWN_CHECK_PERIOD = 0.1 # Seconds
+
+    # TODO: Wrap git fetch command and enforce a timeout.  Git will probably
+    # timeout on its own in most cases, but it would suck if it hung forever.
+
+    def __init__(self, repositories, period, *args, **kwargs):
+        """
+        Takes a list of repositories and a period (in seconds) to poll them.
+        As long as it is running, the repositories will be kept up to date
+        every period seconds (with a git fetch).
+        """
+        super(GitFetcher, self).__init__(*args, **kwargs)
+        self.repositories = repositories
+        self.period = period * 1.1 # Hacky attempt to avoid resonance
+        self.shutdown = False
+
+    def stop(self):
+        """
+        Shut down the thread as soon as possible. May take some time if
+        inside a long-running fetch operation.
+        """
+        self.shutdown = True
+
+    def run(self):
+        "The main thread method."
+        # Wait for half the period to stagger this thread and the main thread
+        # and avoid lock contention.
+        time.sleep(self.period/2)
+        while not self.shutdown:
+            end_time = time.time() + self.period
+            # Poll now
+            for repository in self.repositories:
+                if self.shutdown: break
+                try:
+                    repository.fetch()
+                except Exception, e:
+                    repository.record_error(e)
+            # Wait for the next periodic check
+            while not self.shutdown and time.time() < end_time:
+                time.sleep(GitFetcher.SHUTDOWN_CHECK_PERIOD)
 
 Class = Git
 
