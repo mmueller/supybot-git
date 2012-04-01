@@ -121,7 +121,9 @@ class Repository(object):
         "Fetch the commit with the given SHA.  Returns None if not found."
         try:
             return self.repo.commit(sha)
-        except ValueError:
+        except ValueError: # 1.x
+            return None
+        except git.GitCommandError: # 3.x
             return None
 
     @synchronized('lock')
@@ -242,7 +244,7 @@ class Git(callbacks.PluginRegexp):
     "Please see the README file to configure and use this plugin."
 
     threaded = True
-    regexps = [ '_snarf' ]
+    unaddressedRegexps = [ '_snarf' ]
 
     def __init__(self, irc):
         global API_VERSION
