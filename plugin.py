@@ -377,6 +377,10 @@ class Git(callbacks.PluginRegexp):
         if new_period != self.poll_period:
             _stop_polling()
             _start_polling()
+        elif not self.fetcher.isAlive():
+            log_info('Fetcher died, creating a new one.')
+            self.fetcher = GitFetcher(self.repositories, self.poll_period)
+            self.fetcher.start()
 
     def _read_config(self):
         self.repositories = []
@@ -430,7 +434,8 @@ class GitFetcher(threading.Thread):
     SHUTDOWN_CHECK_PERIOD = 0.1 # Seconds
 
     # TODO: Wrap git fetch command and enforce a timeout.  Git will probably
-    # timeout on its own in most cases, but it would suck if it hung forever.
+    # timeout on its own in most cases, but I have actually seen it hang
+    # forever on "fetch" before.
 
     def __init__(self, repositories, period, *args, **kwargs):
         """
@@ -454,19 +459,22 @@ class GitFetcher(threading.Thread):
         "The main thread method."
         # Wait for half the period to stagger this thread and the main thread
         # and avoid lock contention.
-        end_time = time.time() + self.period/2
-        while not self.shutdown:
-            # Poll now
-            for repository in self.repositories:
-                if self.shutdown: break
-                try:
-                    repository.fetch()
-                except Exception, e:
-                    repository.record_error(e)
-            # Wait for the next periodic check
-            while not self.shutdown and time.time() < end_time:
-                time.sleep(GitFetcher.SHUTDOWN_CHECK_PERIOD)
-            end_time = time.time() + self.period
+        try:
+            end_time = time.time() + self.period/2
+            while not self.shutdown:
+                # Poll now
+                for repository in self.repositories:
+                    if self.shutdown: break
+                    try:
+                        repository.fetch()
+                    except Exception, e:
+                        repository.record_error(e)
+                # Wait for the next periodic check
+                while not self.shutdown and time.time() < end_time:
+                    time.sleep(GitFetcher.SHUTDOWN_CHECK_PERIOD)
+                end_time = time.time() + self.period
+        except Exception, e:
+            log_error('Fetcher died due to exception: %s' % str(e))
 
 Class = Git
 
