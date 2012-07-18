@@ -454,9 +454,8 @@ class GitFetcher(threading.Thread):
         "The main thread method."
         # Wait for half the period to stagger this thread and the main thread
         # and avoid lock contention.
-        time.sleep(self.period/2)
+        end_time = time.time() + self.period/2
         while not self.shutdown:
-            end_time = time.time() + self.period
             # Poll now
             for repository in self.repositories:
                 if self.shutdown: break
@@ -467,6 +466,7 @@ class GitFetcher(threading.Thread):
             # Wait for the next periodic check
             while not self.shutdown and time.time() < end_time:
                 time.sleep(GitFetcher.SHUTDOWN_CHECK_PERIOD)
+            end_time = time.time() + self.period
 
 Class = Git
 
