@@ -369,7 +369,7 @@ class Git(callbacks.PluginRegexp):
                 finally:
                     repository.lock.release()
             else:
-                log.info('Unable to check repository %s: Locked.' %
+                log.info('Postponing repository read: %s: Locked.' %
                     repository.long_name)
         for irc, channel, text in messages:
             irc.queueMsg(ircmsgs.privmsg(channel, text))
@@ -457,18 +457,24 @@ class GitFetcher(threading.Thread):
 
     def run(self):
         "The main thread method."
-        # Wait for half the period to stagger this thread and the main thread
-        # and avoid lock contention.
         try:
+            # Initially wait for half the period to stagger this thread and
+            # the main thread and avoid lock contention.
             end_time = time.time() + self.period/2
             while not self.shutdown:
                 # Poll now
                 for repository in self.repositories:
                     if self.shutdown: break
-                    try:
-                        repository.fetch()
-                    except Exception, e:
-                        repository.record_error(e)
+                    if repository.lock.acquire(blocking=False):
+                        try:
+                            repository.fetch()
+                        except Exception, e:
+                            repository.record_error(e)
+                        finally:
+                            repository.lock.release()
+                    else:
+                        log_info('Postponing repository fetch: %s: Locked.' %
+                                 repository.long_name)
                 # Wait for the next periodic check
                 while not self.shutdown and time.time() < end_time:
                     time.sleep(GitFetcher.SHUTDOWN_CHECK_PERIOD)
