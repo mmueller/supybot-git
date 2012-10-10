@@ -197,6 +197,7 @@ class Repository(object):
             'n': self.long_name,
             's': self.short_name,
             'u': self.url,
+            'r': '\x0f',
             '!': '\x02',
             '%': '%',
         }
