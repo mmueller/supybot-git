@@ -254,7 +254,7 @@ class Git(callbacks.PluginRegexp):
         self.__parent.__init__(irc)
         self.fetcher = None
         self._read_config()
-        self._start_polling()
+        self._schedule_next_event()
 
     def init_git_python(self):
         global API_VERSION, git
@@ -282,7 +282,7 @@ class Git(callbacks.PluginRegexp):
         self._stop_polling()
         try:
             self._read_config()
-            self._start_polling()
+            self._schedule_next_event()
             irc.replySuccess()
         except Exception, e:
             irc.reply('Error reloading config: ' + str(e))
@@ -352,44 +352,39 @@ class Git(callbacks.PluginRegexp):
         # 2. This _poll occurs, and looks for new commits in those local
         #    copies.  (Therefore this function should be quick. If it is
         #    slow, it may block the entire bot.)
-        for repository in self.repositories:
-            # Find the channel among IRC connections (first found will win)
-            ircs = [irc for irc in world.ircs
-                    if repository.channel in irc.state.channels]
-            if not ircs:
-                log_info("Skipping %s: not in channel: %s"
-                    % (repository.long_name, repository.channel))
-                continue
-            irc = ircs[0]
+        try:
+            for repository in self.repositories:
+                # Find the channel among IRC connections (first found will win)
+                ircs = [irc for irc in world.ircs
+                        if repository.channel in irc.state.channels]
+                if not ircs:
+                    log_info("Skipping %s: not in channel: %s"
+                        % (repository.long_name, repository.channel))
+                    continue
+                irc = ircs[0]
 
-            # Manual non-blocking lock calls here to avoid potentially long
-            # waits (if it fails, hope for better luck in the next _poll).
-            if repository.lock.acquire(blocking=False):
-                try:
-                    errors = repository.get_errors()
-                    for e in errors:
-                        log_error('Unable to fetch %s: %s' %
-                            (repository.long_name, str(e)))
-                    commits = repository.get_new_commits()
-                    self._display_commits(irc, repository, commits)
-                except Exception, e:
-                    log_error('Exception in _poll repository %s: %s' %
-                            (repository.short_name, str(e)))
-                finally:
-                    repository.lock.release()
-            else:
-                log.info('Postponing repository read: %s: Locked.' %
-                    repository.long_name)
-        for irc, channel, text in messages:
-            irc.queueMsg(ircmsgs.privmsg(channel, text))
-        new_period = self.registryValue('pollPeriod')
-        if new_period != self.poll_period:
-            _stop_polling()
-            _start_polling()
-        elif not self.fetcher.isAlive():
-            log_info('Fetcher died, creating a new one.')
-            self.fetcher = GitFetcher(self.repositories, self.poll_period)
-            self.fetcher.start()
+                # Manual non-blocking lock calls here to avoid potentially long
+                # waits (if it fails, hope for better luck in the next _poll).
+                if repository.lock.acquire(blocking=False):
+                    try:
+                        errors = repository.get_errors()
+                        for e in errors:
+                            log_error('Unable to fetch %s: %s' %
+                                (repository.long_name, str(e)))
+                        commits = repository.get_new_commits()
+                        self._display_commits(irc, repository, commits)
+                    except Exception, e:
+                        log_error('Exception in _poll repository %s: %s' %
+                                (repository.short_name, str(e)))
+                    finally:
+                        repository.lock.release()
+                else:
+                    log.info('Postponing repository read: %s: Locked.' %
+                        repository.long_name)
+            self._schedule_next_event()
+        except Exception, e:
+            log_error('Exception in _poll(): %s' % str(e))
+            traceback.print_exc(e)
 
     def _read_config(self):
         self.repositories = []
@@ -399,6 +394,17 @@ class Git(callbacks.PluginRegexp):
         for section in parser.sections():
             self.repositories.append(
                 Repository(repo_dir, section, parser.items(section)))
+
+    def _schedule_next_event(self):
+        period = self.registryValue('pollPeriod')
+        if period > 0:
+            if not self.fetcher or not self.fetcher.isAlive():
+                self.fetcher = GitFetcher(self.repositories, period)
+                self.fetcher.start()
+            schedule.addEvent(self._poll, time.time() + period,
+                              name=self.name())
+        else:
+            self._stop_polling()
 
     def _snarf(self, irc, msg, match):
         r"""\b(?P<sha>[0-9a-f]{6,40})\b"""
@@ -410,14 +416,6 @@ class Git(callbacks.PluginRegexp):
             if commit:
                 self._display_commits(irc, repository, [commit])
                 break
-
-    def _start_polling(self):
-        self.poll_period = self.registryValue('pollPeriod')
-        if self.poll_period:
-            self.fetcher = GitFetcher(self.repositories, self.poll_period)
-            self.fetcher.start()
-            schedule.addPeriodicEvent(
-                self._poll, self.poll_period, now=False, name=self.name())
 
     def _stop_polling(self):
         # Never allow an exception to propagate since this is called in die()
@@ -466,12 +464,11 @@ class GitFetcher(threading.Thread):
 
     def run(self):
         "The main thread method."
-        try:
-            # Initially wait for half the period to stagger this thread and
-            # the main thread and avoid lock contention.
-            end_time = time.time() + self.period/2
-            while not self.shutdown:
-                # Poll now
+        # Initially wait for half the period to stagger this thread and
+        # the main thread and avoid lock contention.
+        end_time = time.time() + self.period/2
+        while not self.shutdown:
+            try:
                 for repository in self.repositories:
                     if self.shutdown: break
                     if repository.lock.acquire(blocking=False):
@@ -484,12 +481,13 @@ class GitFetcher(threading.Thread):
                     else:
                         log_info('Postponing repository fetch: %s: Locked.' %
                                  repository.long_name)
-                # Wait for the next periodic check
-                while not self.shutdown and time.time() < end_time:
-                    time.sleep(GitFetcher.SHUTDOWN_CHECK_PERIOD)
-                end_time = time.time() + self.period
-        except Exception, e:
-            log_error('Fetcher died due to exception: %s' % str(e))
+            except Exception, e:
+                log_error('Exception checking repository %s: %s' %
+                          (repository.short_name, str(e)))
+            # Wait for the next periodic check
+            while not self.shutdown and time.time() < end_time:
+                time.sleep(GitFetcher.SHUTDOWN_CHECK_PERIOD)
+            end_time = time.time() + self.period
 
 Class = Git
 

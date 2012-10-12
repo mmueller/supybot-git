@@ -116,7 +116,8 @@ to absolute paths.  The settings are found within `supybot.plugins.Git`:
   Default: git\_repositories
 
 * `pollPeriod`: How often (in seconds) that repositories will be polled for
-  changes.  Zero disables periodic polling.  Default: 120
+  changes.  Zero disables periodic polling.  If you change the value from zero
+  to a positive value, call `gitrehash` to restart polling. Default: 120
 
 * `maxCommitsAtOnce`: Limit how many commits can be displayed in one update.
   This will affect output from the periodic polling as well as the shortlog
@@ -128,7 +129,7 @@ How Notification Works
 The first time a repository is loaded from the INI file, a clone will be
 performed and saved in the repoDir defined above.
 
-**Warning #1:** If the repository is big and/or the your network is slow, the
+**Warning #1:** If the repository is big and/or the network is slow, the
 first load may take a very long time!
 
 **Warning #2:** If the repositories you track are big, this plugin will use a
