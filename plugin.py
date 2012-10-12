@@ -371,7 +371,7 @@ class Git(callbacks.PluginRegexp):
                         for e in errors:
                             log_error('Unable to fetch %s: %s' %
                                 (repository.long_name, str(e)))
-                        commits = repository.get_new_commits()
+                        commits = repository.get_new_commits()[::-1]
                         self._display_commits(irc, repository, commits)
                     except Exception, e:
                         log_error('Exception in _poll repository %s: %s' %
