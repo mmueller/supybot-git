@@ -139,7 +139,7 @@ class Repository(object):
     @synchronized('lock')
     def get_new_commits(self):
         if API_VERSION == 1:
-            result = self.repo.commits_between(self.last_commit, self.branch)
+            result = list(self.repo.commits_between(self.last_commit, self.branch))
         elif API_VERSION == 3:
             rev = "%s..%s" % (self.last_commit, self.branch)
             result = list(self.repo.iter_commits(rev))
