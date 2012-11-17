@@ -52,7 +52,7 @@ COMMITS[3].author.name = 'jsnow'
 COMMITS[3].hexsha = 'abcdefabcdefabcdefabcdefabcdefabcdefabcd'
 COMMITS[3].message = "Finished brooding, think I'll go brood."
 COMMITS[4].author.name = 'tlannister'
-COMMITS[4].hexsha = 'abcdefabcdefabcdefabcdefabcdefabcdefabcd'
+COMMITS[4].hexsha = 'deadbeefcdefabcdefabcdefabcdefabcdefabcd'
 COMMITS[4].message = "I'm the only one getting things done."
 
 # Pre-test checks
@@ -198,5 +198,13 @@ class GitLogTest(ChannelPluginTestCase, PluginTestCaseUtilMixin):
             '[test2|feature|nstark] Fix bugs.',
         ]
         self.assertResponses('log test2 5', expected)
+
+    def testSnarf(self):
+        self.Repo.commit.return_value = COMMITS[4]
+        expected = [
+            "[test2|feature|tlannister] I'm the only one getting things done.",
+        ]
+        self.assertResponses('who wants some deadbeef?', expected,
+                             usePrefixChar=False)
 
 # vim:set shiftwidth=4 tabstop=4 expandtab textwidth=79:
