@@ -53,6 +53,17 @@ def log_info(message):
 def log_error(message):
     log.error("Git: " + message)
 
+def plural(count, singular, plural=None):
+    if count == 1:
+        return singular
+    if plural:
+        return plural
+    if singular[-1] == 's':
+        return singular + 'es'
+    if singular[-1] == 'y':
+        return singular[:-1] + 'ies'
+    return singular + 's'
+
 def synchronized(tlockname):
     """
     Decorates a class method (with self as the first parameter) to acquire the
@@ -263,12 +274,15 @@ class Git(callbacks.PluginRegexp):
         self.init_git_python()
         self.__parent = super(Git, self)
         self.__parent.__init__(irc)
-        self.fetcher = None
-        self._stop_polling()
-        self._read_config()
-        self._schedule_next_event()
         # Workaround the fact that self.log already exists in plugins
         self.log = LogWrapper(self.log, Git._log.__get__(self))
+        self.fetcher = None
+        self._stop_polling()
+        try:
+            self._read_config()
+        except Exception, e:
+            irc.reply('Warning: %s' % str(e))
+        self._schedule_next_event()
 
     def init_git_python(self):
         global GIT_API_VERSION, git
@@ -317,9 +331,11 @@ class Git(callbacks.PluginRegexp):
         try:
             self._read_config()
             self._schedule_next_event()
-            irc.replySuccess()
+            n = len(self.repository_list)
+            irc.reply('Git reinitialized with %d %s.' %
+                      (n, plural(n, 'repository')))
         except Exception, e:
-            irc.reply('Error reloading config: ' + str(e))
+            irc.reply('Warning: %s' % str(e))
 
     def repositories(self, irc, msg, args, channel):
         """(takes no arguments)
@@ -423,8 +439,11 @@ class Git(callbacks.PluginRegexp):
     def _read_config(self):
         self.repository_list = []
         repo_dir = self.registryValue('repoDir')
+        config = self.registryValue('configFile')
+        if not os.access(config, os.R_OK):
+            raise Exception('Cannot access configuration file: %s' % config)
         parser = ConfigParser.RawConfigParser()
-        parser.read(self.registryValue('configFile'))
+        parser.read(config)
         for section in parser.sections():
             options = dict(parser.items(section))
             self.repository_list.append(Repository(repo_dir, section, options))
