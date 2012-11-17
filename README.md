@@ -20,16 +20,19 @@ Interface changes:
 
 * Several commands have been renamed.  Sorry for the inconvenience, but it was
   time to make some common sense usabliity improvements.
-
 * Repository definitions now take a `channels` option instead of a single
   `channel` (although `channel` is supported for backwards compatibility).
 
 Dependencies
 ------------
 
-This plugin depends on the GitPython package (`pip install GitPython` or on
-Debian/Ubuntu, `apt-get install python-git`), which in turn depends on git.
-It will not function without them.
+This plugin depends on the Python packages:
+
+* GitPython (supports 0.1.x and 0.3.x)
+* Mock (if you want to run the tests)
+
+Dependencies are also listed in `requirements.txt`.  You can install them with
+the command `pip install -r requirements.txt`.
 
 Configuration
 -------------
