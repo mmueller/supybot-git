@@ -263,8 +263,11 @@ class Git(callbacks.PluginRegexp):
         self.__parent = super(Git, self)
         self.__parent.__init__(irc)
         self.fetcher = None
+        self._stop_polling()
         self._read_config()
         self._schedule_next_event()
+        # Workaround the fact that self.log already exists in plugins
+        self.log = LogWrapper(self.log, Git._log.__get__(self))
 
     def init_git_python(self):
         global GIT_API_VERSION, git
@@ -284,7 +287,27 @@ class Git(callbacks.PluginRegexp):
         self._stop_polling()
         self.__parent.die()
 
-    def gitrehash(self, irc, msg, args):
+    def _log(self, irc, msg, args, channel, name, count):
+        """<short name> [count]
+
+        Display the last commits on the named repository. [count] defaults to
+        1 if unspecified.
+        """
+        matches = filter(lambda r: r.short_name == name, self.repository_list)
+        if not matches:
+            irc.reply('No configured repository named %s.' % name)
+            return
+        # Enforce a modest privacy measure... don't let people probe the
+        # repository outside the designated channel.
+        repository = matches[0]
+        if channel != repository.channel:
+            irc.reply('Sorry, not allowed in this channel.')
+            return
+        commits = repository.get_recent_commits(count)[::-1]
+        self._display_commits(irc, repository, commits)
+    _log = wrap(_log, ['channel', 'somethingWithoutSpaces', optional('int', 1)])
+
+    def rehash(self, irc, msg, args):
         """(takes no arguments)
 
         Reload the Git ini file and restart any period polling.
@@ -297,12 +320,13 @@ class Git(callbacks.PluginRegexp):
         except Exception, e:
             irc.reply('Error reloading config: ' + str(e))
 
-    def repolist(self, irc, msg, args, channel):
+    def repositories(self, irc, msg, args, channel):
         """(takes no arguments)
 
         Display the names of known repositories configured for this channel.
         """
-        repositories = filter(lambda r: r.channel == channel, self.repositories)
+        repositories = filter(lambda r: r.channel == channel,
+                              self.repository_list)
         if not repositories:
             irc.reply('No repositories configured for this channel.')
             return
@@ -314,28 +338,23 @@ class Git(callbacks.PluginRegexp):
                 'short_name': r.short_name,
                 'url': r.url,
             })
-    repolist = wrap(repolist, ['channel'])
+    repositories = wrap(repositories, ['channel'])
 
-    def shortlog(self, irc, msg, args, channel, name, count):
-        """<short name> [count]
+    def gitrehash(self, irc, msg, args):
+        "Obsolete command, remove this function eventually."
+        irc.reply('"gitrehash" is obsolete, please use "rehash".')
 
-        Display the last commits on the named repository. [count] defaults to
-        1 if unspecified.
-        """
-        matches = filter(lambda r: r.short_name == name, self.repositories)
-        if not matches:
-            irc.reply('No configured repository named %s.' % name)
-            return
-        # Enforce a modest privacy measure... don't let people probe the
-        # repository outside the designated channel.
-        repository = matches[0]
-        if channel != repository.channel:
-            irc.reply('Sorry, not allowed in this channel.')
-            return
-        commits = repository.get_recent_commits(count)[::-1]
-        self._display_commits(irc, repository, commits)
-    shortlog = wrap(shortlog,
-        ['channel', 'somethingWithoutSpaces', optional('int', 1)])
+    def repolist(self, irc, msg, args):
+        "Obsolete command, remove this function eventually."
+        irc.reply('"repolist" is obsolete, please use "repositories".')
+
+    def shortlog(self, irc, msg, args):
+        "Obsolete command, remove this function eventually."
+        irc.reply('"shortlog" is obsolete, please use "log".')
+
+    # Overridden to hide the obsolete commands
+    def listCommands(self, pluginCommands=[]):
+        return ['log', 'rehash', 'repositories']
 
     def _display_commits(self, irc, repository, commits):
         "Display a nicely-formatted list of commits in a channel."
@@ -363,7 +382,7 @@ class Git(callbacks.PluginRegexp):
         #    copies.  (Therefore this function should be quick. If it is
         #    slow, it may block the entire bot.)
         try:
-            for repository in self.repositories:
+            for repository in self.repository_list:
                 # Find the channel among IRC connections (first found will win)
                 ircs = [irc for irc in world.ircs
                         if repository.channel in irc.state.channels]
@@ -397,19 +416,19 @@ class Git(callbacks.PluginRegexp):
             traceback.print_exc(e)
 
     def _read_config(self):
-        self.repositories = []
+        self.repository_list = []
         repo_dir = self.registryValue('repoDir')
         parser = ConfigParser.RawConfigParser()
         parser.read(self.registryValue('configFile'))
         for section in parser.sections():
-            self.repositories.append(
+            self.repository_list.append(
                 Repository(repo_dir, section, parser.items(section)))
 
     def _schedule_next_event(self):
         period = self.registryValue('pollPeriod')
         if period > 0:
             if not self.fetcher or not self.fetcher.isAlive():
-                self.fetcher = GitFetcher(self.repositories, period)
+                self.fetcher = GitFetcher(self.repository_list, period)
                 self.fetcher.start()
             schedule.addEvent(self._poll, time.time() + period,
                               name=self.name())
@@ -420,7 +439,8 @@ class Git(callbacks.PluginRegexp):
         r"""\b(?P<sha>[0-9a-f]{6,40})\b"""
         sha = match.group('sha')
         channel = msg.args[0]
-        repositories = filter(lambda r: r.channel == channel, self.repositories)
+        repositories = filter(lambda r: r.channel == channel,
+                              self.repository_list)
         for repository in repositories:
             commit = repository.get_commit(sha)
             if commit:
@@ -461,7 +481,7 @@ class GitFetcher(threading.Thread):
         every period seconds (with a git fetch).
         """
         super(GitFetcher, self).__init__(*args, **kwargs)
-        self.repositories = repositories
+        self.repository_list = repositories
         self.period = period * 1.1 # Hacky attempt to avoid resonance
         self.shutdown = False
 
@@ -479,7 +499,7 @@ class GitFetcher(threading.Thread):
         end_time = time.time() + self.period/2
         while not self.shutdown:
             try:
-                for repository in self.repositories:
+                for repository in self.repository_list:
                     if self.shutdown: break
                     if repository.lock.acquire(blocking=False):
                         try:
@@ -498,6 +518,44 @@ class GitFetcher(threading.Thread):
             while not self.shutdown and time.time() < end_time:
                 time.sleep(GitFetcher.SHUTDOWN_CHECK_PERIOD)
             end_time = time.time() + self.period
+
+class LogWrapper(object):
+    """
+    Horrific workaround for the fact that PluginMixin has a member variable
+    called 'log' -- wiping out my 'log' command.  Delegates all requests to
+    the log, and when called as a function, performs the log command.
+    """
+
+    LOGGER_METHODS = [
+        'debug',
+        'info',
+        'warning',
+        'error',
+        'critical',
+        'exception',
+    ]
+
+    def __init__(self, log_object, log_command):
+        "Construct the wrapper with the objects being wrapped."
+        self.log_object = log_object
+        self.log_command = log_command
+        self.__doc__ = log_command.__doc__
+
+    def __call__(self, *args, **kwargs):
+        return self.log_command(*args, **kwargs)
+
+    def __getattr__(self, name):
+        if name in LogWrapper.LOGGER_METHODS:
+            return getattr(self.log_object, name)
+        else:
+            return getattr(self.log_command, name)
+
+# Because isCommandMethod() relies on inspection (whyyyy), I do this (gross)
+import inspect
+if 'git_orig_ismethod' not in dir(inspect):
+    inspect.git_orig_ismethod = inspect.ismethod
+    inspect.ismethod = \
+        lambda x: type(x) == LogWrapper or inspect.git_orig_ismethod(x)
 
 Class = Git
 

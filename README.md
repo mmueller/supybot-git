@@ -11,6 +11,13 @@ monitor Git repositories.  Features:
   other channels.
 * Highly configurable.
 
+NEWS
+----
+
+As of November 2012, several commands have been renamed.  Sorry for the
+inconvenience, but it was time to make some common sense usabliity
+improvements.
+
 Dependencies
 ------------
 
@@ -117,10 +124,10 @@ to absolute paths.  The settings are found within `supybot.plugins.Git`:
 
 * `pollPeriod`: How often (in seconds) that repositories will be polled for
   changes.  Zero disables periodic polling.  If you change the value from zero
-  to a positive value, call `gitrehash` to restart polling. Default: 120
+  to a positive value, call `rehash` to restart polling. Default: 120
 
 * `maxCommitsAtOnce`: Limit how many commits can be displayed in one update.
-  This will affect output from the periodic polling as well as the shortlog
+  This will affect output from the periodic polling as well as the log
   command.  Default: 5
 
 How Notification Works
@@ -144,12 +151,18 @@ may want to go manually delete it to free up disk space.
 Command List
 ------------
 
-* `gitrehash`: Reload the INI file, cloning any newly present repositories.
-  Restarts any polling if applicable.
-
-* `repolist`: List any known repositories configured for the current channel.
-
-* `shortlog`: Takes a repository nickname (aka "short name") and an optional
+* `log`: Takes a repository nickname (aka "short name") and an optional
   count parameter (default 1).  Shows the last n commits on the branch tracked
   for that repository.  Only works if the repository is configured for the
   current channel.
+
+* `repositories`: List any known repositories configured for the current
+  channel.
+
+* `rehash`: Reload the INI file, cloning any newly present repositories.
+  Restarts any polling if applicable.
+
+As usual with Supybot plugins, you can call these commands by themselves or
+with the plugin name prefix, e.g. `@git log`.  The latter form is only
+necessary if another plugin has a command called `log` as well, causing a
+conflict.
