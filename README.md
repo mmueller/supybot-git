@@ -14,9 +14,15 @@ monitor Git repositories.  Features:
 NEWS
 ----
 
-As of November 2012, several commands have been renamed.  Sorry for the
-inconvenience, but it was time to make some common sense usabliity
-improvements.
+### November 17, 2012
+
+Interface changes:
+
+* Several commands have been renamed.  Sorry for the inconvenience, but it was
+  time to make some common sense usabliity improvements.
+
+* Repository definitions now take a `channels` option instead of a single
+  `channel` (although `channel` is supported for backwards compatibility).
 
 Dependencies
 ------------
@@ -40,7 +46,7 @@ Here is an example of a repository definition:
     short name = prototype
     url = https://github.com/sstephenson/prototype.git
     commit link = https://github.com/sstephenson/prototype/commit/%c
-    channel = #prototype
+    channels = #prototype
 
 Most of this will be self-explanatory.  This defines a repository for the
 Prototype JavaScript library, so the Git plugin will be able to fetch a copy
@@ -54,10 +60,12 @@ Let's break down the possible settings:
 * `url`: *Required.* The URL to the git repository, which may be a path on
   disk, or a URL to a remote repository.
 
-* `channel`: *Required.* The channel where the repository messages will
-  appear.  This is also a weak privacy measure; people on other channels will
-  not be able to request information about the repository. All interaction
-  with the repository is bound to this one channel.
+* `channels`: *Required.* A space-separated list of channels where
+  notifications of new commits will appear.  If you provide more than one
+  channel, all channels will receive commit messages.  This is also a weak
+  privacy measure; people on other channels will not be able to request
+  information about the repository. All interaction with the repository is
+  limited to these channels.
 
 * `branch`: *Optional.* The branch to follow for this repository. If you want
   to follow multiple branches, you need to define multiple repository sections

@@ -74,38 +74,39 @@ def synchronized(tlockname):
 class Repository(object):
     "Represents a git repository being monitored."
 
-    def __init__(self, repo_dir, long_name, config_values):
+    def __init__(self, repo_dir, long_name, options):
         """
-        Initialize with a repository with the given name and list of (name,
-        value) pairs from the config section.
+        Initialize with a repository with the given name and dict of options
+        from the config section.
         """
         if GIT_API_VERSION == -1:
             raise Exception("Git-python API version uninitialized.")
-        required_values = [ 'short name', 'url', 'channel' ]
-        optional_values = [ 'branch', 'commit link', 'commit message' ]
 
+        # Validate configuration ("channel" allowed for backward compatibility)
+        required_values = ['short name', 'url']
+        optional_values = ['branch', 'channel', 'channels', 'commit link',
+                           'commit message']
         for name in required_values:
-            if not filter(lambda pair: pair[0] == name, config_values):
+            if name not in options:
                 raise Exception('Section %s missing required value: %s' %
                         (long_name, name))
-
-        for name, value in config_values:
+        for name, value in options.items():
             if name not in required_values and name not in optional_values:
                 raise Exception('Section %s contains unrecognized value: %s' %
                         (long_name, name))
 
+        # Initialize
+        self.branch = 'origin/' + options.get('branch', 'master')
+        self.channels = options.get('channels', options.get('channel')).split()
+        self.commit_link = options.get('commit link', '')
+        self.commit_message = options.get('commit message', '[%s|%b|%a] %m')
+        self.errors = []
+        self.last_commit = None
         self.lock = threading.RLock()
         self.long_name = long_name
-        self.branch = 'master'
-        self.commit_link = ''
-        self.commit_message = '[%s|%b|%a] %m'
-        self.last_commit = None
+        self.short_name = options['short name']
         self.repo = None
-        self.errors = []
-
-        for name, value in config_values:
-            self.__dict__[name.replace(' ', '_')] = value
-        self.branch = 'origin/' + self.branch
+        self.url = options['url']
 
         if not os.path.exists(repo_dir):
             os.makedirs(repo_dir)
@@ -300,11 +301,11 @@ class Git(callbacks.PluginRegexp):
         # Enforce a modest privacy measure... don't let people probe the
         # repository outside the designated channel.
         repository = matches[0]
-        if channel != repository.channel:
+        if channel not in repository.channels:
             irc.reply('Sorry, not allowed in this channel.')
             return
         commits = repository.get_recent_commits(count)[::-1]
-        self._display_commits(irc, repository, commits)
+        self._display_commits(irc, channel, repository, commits)
     _log = wrap(_log, ['channel', 'somethingWithoutSpaces', optional('int', 1)])
 
     def rehash(self, irc, msg, args):
@@ -325,7 +326,7 @@ class Git(callbacks.PluginRegexp):
 
         Display the names of known repositories configured for this channel.
         """
-        repositories = filter(lambda r: r.channel == channel,
+        repositories = filter(lambda r: channel in r.channels,
                               self.repository_list)
         if not repositories:
             irc.reply('No repositories configured for this channel.')
@@ -356,12 +357,12 @@ class Git(callbacks.PluginRegexp):
     def listCommands(self, pluginCommands=[]):
         return ['log', 'rehash', 'repositories']
 
-    def _display_commits(self, irc, repository, commits):
+    def _display_commits(self, irc, channel, repository, commits):
         "Display a nicely-formatted list of commits in a channel."
         commits = list(commits)
         commits_at_once = self.registryValue('maxCommitsAtOnce')
         if len(commits) > commits_at_once:
-            irc.queueMsg(ircmsgs.privmsg(repository.channel,
+            irc.queueMsg(ircmsgs.privmsg(channel,
                          "Showing latest %d of %d commits to %s..." % (
                 commits_at_once,
                 len(commits),
@@ -370,7 +371,7 @@ class Git(callbacks.PluginRegexp):
         for commit in commits[-commits_at_once:]:
             lines = repository.format_message(commit)
             for line in lines:
-                msg = ircmsgs.privmsg(repository.channel, line)
+                msg = ircmsgs.privmsg(channel, line)
                 irc.queueMsg(msg)
 
     def _poll(self):
@@ -383,14 +384,16 @@ class Git(callbacks.PluginRegexp):
         #    slow, it may block the entire bot.)
         try:
             for repository in self.repository_list:
-                # Find the channel among IRC connections (first found will win)
-                ircs = [irc for irc in world.ircs
-                        if repository.channel in irc.state.channels]
-                if not ircs:
-                    log_info("Skipping %s: not in channel: %s"
-                        % (repository.long_name, repository.channel))
+                # Find the IRC/channel pairs to notify
+                targets = []
+                for irc in world.ircs:
+                    for channel in repository.channels:
+                        if channel in irc.state.channels:
+                            targets.append((irc, channel))
+                if not targets:
+                    log_info("Skipping %s: not in configured channel(s)." %
+                             repository.long_name)
                     continue
-                irc = ircs[0]
 
                 # Manual non-blocking lock calls here to avoid potentially long
                 # waits (if it fails, hope for better luck in the next _poll).
@@ -401,7 +404,9 @@ class Git(callbacks.PluginRegexp):
                             log_error('Unable to fetch %s: %s' %
                                 (repository.long_name, str(e)))
                         commits = repository.get_new_commits()[::-1]
-                        self._display_commits(irc, repository, commits)
+                        for irc, channel in targets:
+                            self._display_commits(irc, channel, repository,
+                                                  commits)
                     except Exception, e:
                         log_error('Exception in _poll repository %s: %s' %
                                 (repository.short_name, str(e)))
@@ -421,8 +426,8 @@ class Git(callbacks.PluginRegexp):
         parser = ConfigParser.RawConfigParser()
         parser.read(self.registryValue('configFile'))
         for section in parser.sections():
-            self.repository_list.append(
-                Repository(repo_dir, section, parser.items(section)))
+            options = dict(parser.items(section))
+            self.repository_list.append(Repository(repo_dir, section, options))
 
     def _schedule_next_event(self):
         period = self.registryValue('pollPeriod')
@@ -439,12 +444,12 @@ class Git(callbacks.PluginRegexp):
         r"""\b(?P<sha>[0-9a-f]{6,40})\b"""
         sha = match.group('sha')
         channel = msg.args[0]
-        repositories = filter(lambda r: r.channel == channel,
+        repositories = filter(lambda r: channel in r.channels,
                               self.repository_list)
         for repository in repositories:
             commit = repository.get_commit(sha)
             if commit:
-                self._display_commits(irc, repository, [commit])
+                self._display_commits(irc, channel, repository, [commit])
                 break
 
     def _stop_polling(self):
