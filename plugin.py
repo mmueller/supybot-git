@@ -320,7 +320,8 @@ class Git(callbacks.PluginRegexp):
             return
         commits = repository.get_recent_commits(count)[::-1]
         self._display_commits(irc, channel, repository, commits)
-    _log = wrap(_log, ['channel', 'somethingWithoutSpaces', optional('int', 1)])
+    _log = wrap(_log, ['channel', 'somethingWithoutSpaces',
+                       optional('positiveInt', 1)])
 
     def rehash(self, irc, msg, args):
         """(takes no arguments)

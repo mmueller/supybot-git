@@ -167,6 +167,18 @@ class GitLogTest(ChannelPluginTestCase, PluginTestCaseUtilMixin):
         expected = ['Sorry, not allowed in this channel.']
         self.assertResponses('log test1', expected)
 
+    def testLogZero(self):
+        expected = ['(\x02log <short name> [count]\x02) -- Display the last ' +
+                    'commits on the named repository. [count] defaults to 1 ' +
+                    'if unspecified.']
+        self.assertResponses('log test2 0', expected)
+
+    def testLogNegative(self):
+        expected = ['(\x02log <short name> [count]\x02) -- Display the last ' +
+                    'commits on the named repository. [count] defaults to 1 ' +
+                    'if unspecified.']
+        self.assertResponses('log test2 -1', expected)
+
     def testLogOne(self):
         expected = ['[test2|feature|nstark] Fix bugs.']
         self.assertResponses('log test2', expected)
