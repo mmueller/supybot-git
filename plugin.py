@@ -1,5 +1,5 @@
 ###
-# Copyright (c) 2011, Mike Mueller <mike.mueller@panopticdev.com>
+# Copyright (c) 2011-2012, Mike Mueller <mike.mueller@panopticdev.com>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -20,6 +20,10 @@
 # POSSIBILITY OF SUCH DAMAGE.
 ###
 
+"""
+A Supybot plugin that monitors and interacts with git repositories.
+"""
+
 import supybot.utils as utils
 from supybot.commands import *
 import supybot.plugins as plugins
@@ -38,8 +42,10 @@ import time
 import traceback
 
 # 'import git' is performed during plugin initialization.
-
-API_VERSION = -1
+#
+# The GitPython library has different APIs depending on the version installed.
+# (0.1.x, 0.3.x supported)
+GIT_API_VERSION = -1
 
 def log_info(message):
     log.info("Git: " + message)
@@ -48,7 +54,11 @@ def log_error(message):
     log.error("Git: " + message)
 
 def synchronized(tlockname):
-    """A decorator to place an instance based lock around a method """
+    """
+    Decorates a class method (with self as the first parameter) to acquire the
+    member variable lock with the given name (e.g. 'lock' ==> self.lock) for
+    the duration of the function (blocking).
+    """
     def _synched(func):
         @wraps(func)
         def _synchronizer(self, *args, **kwargs):
@@ -69,7 +79,7 @@ class Repository(object):
         Initialize with a repository with the given name and list of (name,
         value) pairs from the config section.
         """
-        if API_VERSION == -1:
+        if GIT_API_VERSION == -1:
             raise Exception("Git-python API version uninitialized.")
         required_values = [ 'short name', 'url', 'channel' ]
         optional_values = [ 'branch', 'commit link', 'commit message' ]
@@ -122,40 +132,40 @@ class Repository(object):
         "Fetch the commit with the given SHA.  Returns None if not found."
         try:
             return self.repo.commit(sha)
-        except ValueError: # 1.x
+        except ValueError: # 0.1.x
             return None
-        except git.GitCommandError: # 3.x
+        except git.GitCommandError: # 0.3.x
             return None
 
     @synchronized('lock')
     def get_commit_id(self, commit):
-        if API_VERSION == 1:
+        if GIT_API_VERSION == 1:
             return commit.id
-        elif API_VERSION == 3:
+        elif GIT_API_VERSION == 3:
             return commit.hexsha
         else:
-            raise Exception("Unsupported API version: %d" % API_VERSION)
+            raise Exception("Unsupported API version: %d" % GIT_API_VERSION)
 
     @synchronized('lock')
     def get_new_commits(self):
-        if API_VERSION == 1:
-            result = list(self.repo.commits_between(self.last_commit, self.branch))
-        elif API_VERSION == 3:
+        if GIT_API_VERSION == 1:
+            result = self.repo.commits_between(self.last_commit, self.branch)
+        elif GIT_API_VERSION == 3:
             rev = "%s..%s" % (self.last_commit, self.branch)
-            result = list(self.repo.iter_commits(rev))
+            result = self.repo.iter_commits(rev)
         else:
-            raise Exception("Unsupported API version: %d" % API_VERSION)
+            raise Exception("Unsupported API version: %d" % GIT_API_VERSION)
         self.last_commit = self.repo.commit(self.branch)
-        return result
+        return list(result)
 
     @synchronized('lock')
     def get_recent_commits(self, count):
-        if API_VERSION == 1:
+        if GIT_API_VERSION == 1:
             return self.repo.commits(start=self.branch, max_count=count)
-        elif API_VERSION == 3:
+        elif GIT_API_VERSION == 3:
             return list(self.repo.iter_commits(self.branch))[:count]
         else:
-            raise Exception("Unsupported API version: %d" % API_VERSION)
+            raise Exception("Unsupported API version: %d" % GIT_API_VERSION)
 
     @synchronized('lock')
     def format_link(self, commit):
@@ -257,18 +267,18 @@ class Git(callbacks.PluginRegexp):
         self._schedule_next_event()
 
     def init_git_python(self):
-        global API_VERSION, git
+        global GIT_API_VERSION, git
         try:
             import git
         except ImportError:
             raise Exception("GitPython is not installed.")
         if not git.__version__.startswith('0.'):
             raise Exception("Unsupported GitPython version.")
-        API_VERSION = int(git.__version__[2])
-        if not API_VERSION in [1, 3]:
+        GIT_API_VERSION = int(git.__version__[2])
+        if not GIT_API_VERSION in [1, 3]:
             log_error('GitPython version %s unrecognized, using 0.3.x API.'
                     % git.__version__)
-            API_VERSION = 3
+            GIT_API_VERSION = 3
 
     def die(self):
         self._stop_polling()
