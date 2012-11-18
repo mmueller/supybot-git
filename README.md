@@ -177,3 +177,20 @@ As usual with Supybot plugins, you can call these commands by themselves or
 with the plugin name prefix, e.g. `@git log`.  The latter form is only
 necessary if another plugin has a command called `log` as well, causing a
 conflict.
+
+Known Bugs
+----------
+
+In Supybot 0.83.4.1, the Owner plugin has a `log` command that might interfere
+with this plugin's `log` command.  Not only that, but Owner's `log` is broken,
+and raises this exception:
+
+    TypeError: 'NoneType' object is not callable
+
+If you see this, the simplest workaround is to set Git as the primary plugin
+to handle the `log` command:
+
+    @defaultplugin log Git
+
+Alternatively, specify `@git log` instead of just `@log` when calling.
+This was reported as issue #9.
