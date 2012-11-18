@@ -55,6 +55,11 @@ COMMITS[4].author.name = 'tlannister'
 COMMITS[4].hexsha = 'deadbeefcdefabcdefabcdefabcdefabcdefabcd'
 COMMITS[4].message = "I'm the only one getting things done."
 
+# Workaround Supybot 0.83.4.1 bug with Owner treating 'log' as a command
+conf.registerGlobalValue(conf.supybot.commands.defaultPlugins,
+                         'log', registry.String('Git', ''))
+conf.supybot.commands.defaultPlugins.get('log').set('Git')
+
 # Pre-test checks
 GIT_API_VERSION = int(git.__version__[2])
 assert GIT_API_VERSION == 3, 'Tests only run against GitPython 0.3.x+ API.'
