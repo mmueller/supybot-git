@@ -50,6 +50,9 @@ GIT_API_VERSION = -1
 def log_info(message):
     log.info("Git: " + message)
 
+def log_warning(message):
+    log.warning("Git: " + message)
+
 def log_error(message):
     log.error("Git: " + message)
 
@@ -281,7 +284,11 @@ class Git(callbacks.PluginRegexp):
         try:
             self._read_config()
         except Exception, e:
-            irc.reply('Warning: %s' % str(e))
+            if 'reply' in dir(irc):
+                irc.reply('Warning: %s' % str(e))
+            else:
+                # During bot startup, there is no one to reply to.
+                log_warning(str(e))
         self._schedule_next_event()
 
     def init_git_python(self):
