@@ -167,6 +167,9 @@ class Repository(object):
             result = self.repo.commits_between(self.last_commit, self.branch)
         elif GIT_API_VERSION == 3:
             rev = "%s..%s" % (self.last_commit, self.branch)
+            # Workaround for GitPython bug:
+            # https://github.com/gitpython-developers/GitPython/issues/61
+            self.repo.odb.update_cache()
             result = self.repo.iter_commits(rev)
         else:
             raise Exception("Unsupported API version: %d" % GIT_API_VERSION)
