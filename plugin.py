@@ -239,6 +239,7 @@ class Repository(object):
             'm': commit.message.split('\n')[0],
             'n': self.long_name,
             's': self.short_name,
+            'S': ' ',
             'u': self.url,
             'r': '\x0f',
             '!': '\x02',
