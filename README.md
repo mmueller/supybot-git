@@ -108,6 +108,7 @@ It uses the following substitution parameters:
     %(fg,bg) IRC color code (foreground and background)
     %!       Toggle bold
     %r       Reset text color and attributes
+    %S       Single space, only meaningful at line start.
     %%       A literal percent sign.
 
 The format string can span multiple lines, in which case, the plugin will
