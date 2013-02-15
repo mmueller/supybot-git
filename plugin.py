@@ -104,7 +104,8 @@ class Repository(object):
         # Validate configuration ("channel" allowed for backward compatibility)
         required_values = ['short name', 'url']
         optional_values = ['branch', 'channel', 'channels', 'commit link',
-                           'commit message']
+                           'commit message', 'group header']
+
         for name in required_values:
             if name not in options:
                 raise Exception('Section %s missing required value: %s' %
@@ -120,6 +121,8 @@ class Repository(object):
         self.commit_link = options.get('commit link', '')
         self.commit_message = options.get('commit message', '[%s|%b|%a] %m')
         self.errors = []
+        header = options.get('group header', 'True')
+        self.group_header = header.lower() in ['true', 'yes', '1']
         self.last_commit = None
         self.lock = threading.RLock()
         self.long_name = long_name
@@ -396,8 +399,8 @@ class Git(callbacks.PluginRegexp):
     def listCommands(self, pluginCommands=[]):
         return ['log', 'rehash', 'repositories']
 
-    def _display_commits(self, irc, channel, repository, commits):
-        "Display a nicely-formatted list of commits in a channel."
+    def _display_some_commits(self, irc, channel, repository, commits):
+        "Display a nicely-formatted list of commits for an author."
         commits = list(commits)
         commits_at_once = self.registryValue('maxCommitsAtOnce')
         if len(commits) > commits_at_once:
@@ -412,6 +415,19 @@ class Git(callbacks.PluginRegexp):
             for line in lines:
                 msg = ircmsgs.privmsg(channel, line)
                 irc.queueMsg(msg)
+
+    def _display_commits(self, irc, channel, repository, commits):
+        "Display a nicely-formatted list of commits in a channel."
+        if not commits:
+            return
+        for a in set([c.author.name for c in commits]):
+            commits_ = [c for c in commits if c.author.name == a]
+            if repository.group_header:
+                line = "%s pushed %d commit(s) to %s at %s" % (
+                    a, len(commits_), repository.branch, repository.short_name)
+                msg = ircmsgs.privmsg(channel, line)
+                irc.queueMsg(msg)
+            self._display_some_commits(irc, channel, repository, commits_)
 
     def _poll(self):
         # Note that polling happens in two steps:
