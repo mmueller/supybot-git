@@ -49,4 +49,7 @@ conf.registerGlobalValue(Git, 'maxCommitsAtOnce',
     registry.NonNegativeInteger(5, """How many commits are displayed at
         once from each repository."""))
 
+conf.registerGlobalValue(Git, 'debug',
+    registry.Boolean(False, """Add some extra debug output."""))
+
 # vim:set shiftwidth=4 tabstop=4 expandtab textwidth=79:

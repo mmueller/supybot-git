@@ -46,6 +46,11 @@ import traceback
 # The GitPython library has different APIs depending on the version installed.
 # (0.1.x, 0.3.x supported)
 GIT_API_VERSION = -1
+_DEBUG = False
+
+def log_debug(message):
+    if _DEBUG:
+        log.info("Git: " + message)
 
 def log_info(message):
     log.info("Git: " + message)
@@ -163,6 +168,7 @@ class Repository(object):
 
     @synchronized('lock')
     def get_new_commits(self):
+        log_debug("Poll: previous commit: %s" % str(self.last_commit)[:7])
         if GIT_API_VERSION == 1:
             result = self.repo.commits_between(self.last_commit, self.branch)
         elif GIT_API_VERSION == 3:
@@ -174,7 +180,10 @@ class Repository(object):
         else:
             raise Exception("Unsupported API version: %d" % GIT_API_VERSION)
         self.last_commit = self.repo.commit(self.branch)
-        return list(result)
+        results = list(result)
+        log_debug("Poll: last commit: %s, %d commits" %
+                      (str(self.last_commit)[:7], len(results)))
+        return results
 
     @synchronized('lock')
     def get_recent_commits(self, count):
@@ -448,7 +457,9 @@ class Git(callbacks.PluginRegexp):
             traceback.print_exc(e)
 
     def _read_config(self):
+        global _DEBUG
         self.repository_list = []
+        _DEBUG = self.registryValue('debug')
         repo_dir = self.registryValue('repoDir')
         config = self.registryValue('configFile')
         if not os.access(config, os.R_OK):
