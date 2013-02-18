@@ -85,7 +85,8 @@ Let's break down the possible settings:
 
 * `group header`: *Optional.* A boolean setting. If true, the commits for
    each author is preceded by a single line like 'John le Carré committed
-   5 commits to our-game'
+   5 commits to our-game". A line like "Talking about fa1afe1?" is displayed
+   before presenting data for a commit id found in the irc conversation.
 
 Commit Messages
 ---------------
