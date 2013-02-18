@@ -140,7 +140,10 @@ class Repository(object):
         if not os.path.exists(self.path):
             git.Git('.').clone(self.url, self.path, no_checkout=True)
         self.repo = git.Repo(self.path)
-        self.last_commit = self.repo.commit(self.branch)
+        try: 
+            self.last_commit = self.repo.commit(self.branch)
+        except: 
+            log_error("Cannot checkout repo branch: " + self.branch)
 
     @synchronized('lock')
     def fetch(self):
