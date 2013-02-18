@@ -416,14 +416,19 @@ class Git(callbacks.PluginRegexp):
                 msg = ircmsgs.privmsg(channel, line)
                 irc.queueMsg(msg)
 
-    def _display_commits(self, irc, channel, repository, commits):
+    def _display_commits(self, irc, channel,
+                         repository, commits, snarfing=False):
         "Display a nicely-formatted list of commits in a channel."
         if not commits:
             return
         for a in set([c.author.name for c in commits]):
-            if repository.group_header:
+            line = ''
+            if repository.group_header and snarfing:
+                line = "Talking about %s?" % repository.get_commit_id(c)[0:7]
+            elif repository.group_header:
                 line = "%s pushed %d commit(s) to %s at %s" % (
                     a, len(commits), repository.branch, repository.short_name)
+            if line:
                 msg = ircmsgs.privmsg(channel, line)
                 irc.queueMsg(msg)
             commits_ = [c for c in commits if c.author.name == a]
@@ -511,7 +516,7 @@ class Git(callbacks.PluginRegexp):
         for repository in repositories:
             commit = repository.get_commit(sha)
             if commit:
-                self._display_commits(irc, channel, repository, [commit])
+                self._display_commits(irc, channel, repository, [commit], True)
                 break
 
     def _stop_polling(self):

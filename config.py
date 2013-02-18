@@ -54,7 +54,7 @@ conf.registerGlobalValue(Git, 'debug',
 
 conf.registerGlobalValue(Git, 'enableSnarf',
     registry.Boolean(True, "Enable snarf i. e., that the bot displays"
-                           " commits if a sha is found in the channel"
+                           " commit if a sha is found in the channel"
                            " conversation"))
 
 # vim:set shiftwidth=4 tabstop=4 expandtab textwidth=79:
