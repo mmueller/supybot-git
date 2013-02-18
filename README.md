@@ -83,6 +83,11 @@ Let's break down the possible settings:
   commits in the channel.  See Commit Messages below for detail.  Default:
   `[%s|%b|%a] %m`
 
+* `group header`: *Optional.* A boolean setting. If true, the commits for
+   each author is preceded by a single line like 'John le Carré committed
+   5 commits to our-game". A line like "Talking about fa1afe1?" is displayed
+   before presenting data for a commit id found in the irc conversation.
+
 Commit Messages
 ---------------
 
@@ -103,6 +108,7 @@ It uses the following substitution parameters:
     %(fg,bg) IRC color code (foreground and background)
     %!       Toggle bold
     %r       Reset text color and attributes
+    %S       Single space, only meaningful at line start.
     %%       A literal percent sign.
 
 The format string can span multiple lines, in which case, the plugin will
