@@ -1,3 +1,14 @@
+Leamas's supybot-git fork
+-------------------------
+
+This branch (master) contains some commits which have been sent as a
+pull request upstream. I have continued the work in the devel branch.
+
+master branch formerly contained a few more commits. Old master branch
+can be checked out as 26d5fe2, available in devel branch (tagged as
+'old-master')
+
+
 Supybot Git Plugin
 ==================
 
