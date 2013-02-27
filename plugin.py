@@ -46,6 +46,11 @@ import traceback
 # The GitPython library has different APIs depending on the version installed.
 # (0.1.x, 0.3.x supported)
 GIT_API_VERSION = -1
+_DEBUG = False
+
+def log_debug(message):
+    if _DEBUG:
+        log.info("Git: " + message)
 
 def log_info(message):
     log.info("Git: " + message)
@@ -99,7 +104,8 @@ class Repository(object):
         # Validate configuration ("channel" allowed for backward compatibility)
         required_values = ['short name', 'url']
         optional_values = ['branch', 'channel', 'channels', 'commit link',
-                           'commit message']
+                           'commit message', 'group header']
+
         for name in required_values:
             if name not in options:
                 raise Exception('Section %s missing required value: %s' %
@@ -115,6 +121,8 @@ class Repository(object):
         self.commit_link = options.get('commit link', '')
         self.commit_message = options.get('commit message', '[%s|%b|%a] %m')
         self.errors = []
+        header = options.get('group header', 'True')
+        self.group_header = header.lower() in ['true', 'yes', '1']
         self.last_commit = None
         self.lock = threading.RLock()
         self.long_name = long_name
@@ -135,7 +143,10 @@ class Repository(object):
         if not os.path.exists(self.path):
             git.Git('.').clone(self.url, self.path, no_checkout=True)
         self.repo = git.Repo(self.path)
-        self.last_commit = self.repo.commit(self.branch)
+        try: 
+            self.last_commit = self.repo.commit(self.branch)
+        except: 
+            log_error("Cannot checkout repo branch: " + self.branch)
 
     @synchronized('lock')
     def fetch(self):
@@ -163,6 +174,7 @@ class Repository(object):
 
     @synchronized('lock')
     def get_new_commits(self):
+        log_debug("Poll: previous commit: %s" % str(self.last_commit)[:7])
         if GIT_API_VERSION == 1:
             result = self.repo.commits_between(self.last_commit, self.branch)
         elif GIT_API_VERSION == 3:
@@ -174,7 +186,10 @@ class Repository(object):
         else:
             raise Exception("Unsupported API version: %d" % GIT_API_VERSION)
         self.last_commit = self.repo.commit(self.branch)
-        return list(result)
+        results = list(result)
+        log_debug("Poll: last commit: %s, %d commits" %
+                      (str(self.last_commit)[:7], len(results)))
+        return results
 
     @synchronized('lock')
     def get_recent_commits(self, count):
@@ -224,6 +239,7 @@ class Repository(object):
             'm': commit.message.split('\n')[0],
             'n': self.long_name,
             's': self.short_name,
+            'S': ' ',
             'u': self.url,
             'r': '\x0f',
             '!': '\x02',
@@ -384,8 +400,8 @@ class Git(callbacks.PluginRegexp):
     def listCommands(self, pluginCommands=[]):
         return ['log', 'rehash', 'repositories']
 
-    def _display_commits(self, irc, channel, repository, commits):
-        "Display a nicely-formatted list of commits in a channel."
+    def _display_some_commits(self, irc, channel, repository, commits):
+        "Display a nicely-formatted list of commits for an author."
         commits = list(commits)
         commits_at_once = self.registryValue('maxCommitsAtOnce')
         if len(commits) > commits_at_once:
@@ -400,6 +416,24 @@ class Git(callbacks.PluginRegexp):
             for line in lines:
                 msg = ircmsgs.privmsg(channel, line)
                 irc.queueMsg(msg)
+
+    def _display_commits(self, irc, channel,
+                         repository, commits, snarfing=False):
+        "Display a nicely-formatted list of commits in a channel."
+        if not commits:
+            return
+        for a in set([c.author.name for c in commits]):
+            commits_ = [c for c in commits if c.author.name == a]
+            line = ''
+            if repository.group_header and snarfing:
+                line = "Talking about %s?" % repository.get_commit_id(c)[0:7]
+            elif repository.group_header:
+                line = "%s pushed %d commit(s) to %s at %s" % (
+                    a, len(commits_), repository.branch, repository.short_name)
+            if line:
+                msg = ircmsgs.privmsg(channel, line)
+                irc.queueMsg(msg)
+            self._display_some_commits(irc, channel, repository, commits_)
 
     def _poll(self):
         # Note that polling happens in two steps:
@@ -448,7 +482,9 @@ class Git(callbacks.PluginRegexp):
             traceback.print_exc(e)
 
     def _read_config(self):
+        global _DEBUG
         self.repository_list = []
+        _DEBUG = self.registryValue('debug')
         repo_dir = self.registryValue('repoDir')
         config = self.registryValue('configFile')
         if not os.access(config, os.R_OK):
@@ -472,6 +508,8 @@ class Git(callbacks.PluginRegexp):
 
     def _snarf(self, irc, msg, match):
         r"""\b(?P<sha>[0-9a-f]{6,40})\b"""
+        if not self.registryValue('enableSnarf'):
+            return
         sha = match.group('sha')
         channel = msg.args[0]
         repositories = filter(lambda r: channel in r.channels,
@@ -479,7 +517,7 @@ class Git(callbacks.PluginRegexp):
         for repository in repositories:
             commit = repository.get_commit(sha)
             if commit:
-                self._display_commits(irc, channel, repository, [commit])
+                self._display_commits(irc, channel, repository, [commit], True)
                 break
 
     def _stop_polling(self):
