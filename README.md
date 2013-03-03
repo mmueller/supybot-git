@@ -79,9 +79,14 @@ Let's break down the possible settings:
   plugin.  Two format specifiers are supported: %c (7-digit SHA) and %C (full
   40-digit SHA).  Default: nothing.
 
-* `commit message`: *Optional.* A format string describing how to describe
+* `commit message`: *Optional.* A format string describing how to display 
   commits in the channel.  See Commit Messages below for detail.  Default:
   `[%s|%b|%a] %m`
+
+* `commit reply`: *Optional* A format string for displaying commits as replies
+  to commands or SHA snarfing (user-triggered events, instead of
+  polling-triggered events).  If empty, your `commit message` format will be
+  used.  Default: (empty string)
 
 Commit Messages
 ---------------

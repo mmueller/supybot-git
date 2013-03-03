@@ -99,7 +99,7 @@ class Repository(object):
         # Validate configuration ("channel" allowed for backward compatibility)
         required_values = ['short name', 'url']
         optional_values = ['branch', 'channel', 'channels', 'commit link',
-                           'commit message']
+                           'commit message', 'commit reply']
         for name in required_values:
             if name not in options:
                 raise Exception('Section %s missing required value: %s' %
@@ -114,6 +114,7 @@ class Repository(object):
         self.channels = options.get('channels', options.get('channel')).split()
         self.commit_link = options.get('commit link', '')
         self.commit_message = options.get('commit message', '[%s|%b|%a] %m')
+        self.commit_reply = options.get('commit reply', '')
         self.errors = []
         self.last_commit = None
         self.lock = threading.RLock()
@@ -206,7 +207,7 @@ class Repository(object):
         return result
 
     @synchronized('lock')
-    def format_message(self, commit):
+    def format_message(self, commit, format_str=None):
         """
         Generate an formatted message for IRC from the given commit, using
         the format specified in the config. Returns a list of strings.
@@ -230,7 +231,9 @@ class Repository(object):
             '%': '%',
         }
         result = []
-        lines = self.commit_message.split('\n')
+        if not format_str:
+            format_str = self.commit_message
+        lines = format_str.split('\n')
         for line in lines:
             mode = MODE_NORMAL
             outline = ''
@@ -329,7 +332,7 @@ class Git(callbacks.PluginRegexp):
             irc.reply('Sorry, not allowed in this channel.')
             return
         commits = repository.get_recent_commits(count)[::-1]
-        self._display_commits(irc, channel, repository, commits)
+        self._reply_commits(irc, channel, repository, commits)
     _log = wrap(_log, ['channel', 'somethingWithoutSpaces',
                        optional('positiveInt', 1)])
 
@@ -390,16 +393,25 @@ class Git(callbacks.PluginRegexp):
         commits_at_once = self.registryValue('maxCommitsAtOnce')
         if len(commits) > commits_at_once:
             irc.queueMsg(ircmsgs.privmsg(channel,
-                         "Showing latest %d of %d commits to %s..." % (
-                commits_at_once,
-                len(commits),
-                repository.long_name,
-            )))
+                         "Showing latest %d of %d commits to %s..." %
+                         (commits_at_once, len(commits), repository.long_name)))
         for commit in commits[-commits_at_once:]:
             lines = repository.format_message(commit)
             for line in lines:
                 msg = ircmsgs.privmsg(channel, line)
                 irc.queueMsg(msg)
+
+    # Post commits to channel as a reply
+    def _reply_commits(self, irc, channel, repository, commits):
+        commits = list(commits)
+        commits_at_once = self.registryValue('maxCommitsAtOnce')
+        if len(commits) > commits_at_once:
+            irc.reply("Showing latest %d of %d commits to %s..." %
+                      (commits_at_once, len(commits), repository.long_name))
+        format_str = repository.commit_reply or repository.commit_message
+        for commit in commits[-commits_at_once:]:
+            lines = repository.format_message(commit, format_str)
+            map(irc.reply, lines)
 
     def _poll(self):
         # Note that polling happens in two steps:
@@ -480,7 +492,7 @@ class Git(callbacks.PluginRegexp):
             for repository in repositories:
                 commit = repository.get_commit(sha)
                 if commit:
-                    self._display_commits(irc, channel, repository, [commit])
+                    self._reply_commits(irc, channel, repository, [commit])
                     break
 
     def _stop_polling(self):
