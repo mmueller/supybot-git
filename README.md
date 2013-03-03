@@ -141,6 +141,10 @@ to absolute paths.  The settings are found within `supybot.plugins.Git`:
   This will affect output from the periodic polling as well as the log
   command.  Default: 5
 
+* `shaSnarfing`: Enables or disables SHA sharfing, a feature which watches the
+  channel for mentions of a SHA and replies with the description of the
+  matching commit, if found.  Default: True
+
 How Notification Works
 ----------------------
 

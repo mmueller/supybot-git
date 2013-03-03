@@ -472,15 +472,16 @@ class Git(callbacks.PluginRegexp):
 
     def _snarf(self, irc, msg, match):
         r"""\b(?P<sha>[0-9a-f]{6,40})\b"""
-        sha = match.group('sha')
-        channel = msg.args[0]
-        repositories = filter(lambda r: channel in r.channels,
-                              self.repository_list)
-        for repository in repositories:
-            commit = repository.get_commit(sha)
-            if commit:
-                self._display_commits(irc, channel, repository, [commit])
-                break
+        if self.registryValue('shaSnarfing'):
+            sha = match.group('sha')
+            channel = msg.args[0]
+            repositories = filter(lambda r: channel in r.channels,
+                                  self.repository_list)
+            for repository in repositories:
+                commit = repository.get_commit(sha)
+                if commit:
+                    self._display_commits(irc, channel, repository, [commit])
+                    break
 
     def _stop_polling(self):
         # Never allow an exception to propagate since this is called in die()

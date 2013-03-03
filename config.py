@@ -49,4 +49,8 @@ conf.registerGlobalValue(Git, 'maxCommitsAtOnce',
     registry.NonNegativeInteger(5, """How many commits are displayed at
         once from each repository."""))
 
+conf.registerGlobalValue(Git, 'shaSnarfing',
+    registry.Boolean(True, """Look for SHAs in user messages written to the
+       channel, and reply with the commit description if one is found."""))
+
 # vim:set shiftwidth=4 tabstop=4 expandtab textwidth=79:
