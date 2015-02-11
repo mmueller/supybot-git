@@ -107,7 +107,7 @@ class Repository(object):
             if name not in options:
                 raise Exception('Section %s missing required value: %s' %
                         (long_name, name))
-        for name, value in options.items():
+        for name, value in list(options.items()):
             if name not in required_values and name not in optional_values:
                 raise Exception('Section %s contains unrecognized value: %s' %
                         (long_name, name))
@@ -244,7 +244,7 @@ class Repository(object):
             outline = ''
             for c in line:
                 if mode == MODE_SUBST:
-                    if c in subst.keys():
+                    if c in list(subst.keys()):
                         outline += subst[c]
                         mode = MODE_NORMAL
                     elif c == '(':
@@ -326,7 +326,7 @@ class Git(callbacks.PluginRegexp):
         Display the last commits on the named repository. [count] defaults to
         1 if unspecified.
         """
-        matches = filter(lambda r: r.short_name == name, self.repository_list)
+        matches = [r for r in self.repository_list if r.shortname == name]
         if not matches:
             irc.reply('No configured repository named %s.' % name)
             return
@@ -361,8 +361,8 @@ class Git(callbacks.PluginRegexp):
 
         Display the names of known repositories configured for this channel.
         """
-        repositories = filter(lambda r: channel in r.channels,
-                              self.repository_list)
+        repositories = [r for r in self.repository_list if channel in
+                r.channels]
         if not repositories:
             irc.reply('No repositories configured for this channel.')
             return
@@ -416,7 +416,7 @@ class Git(callbacks.PluginRegexp):
         format_str = repository.commit_reply or repository.commit_message
         for commit in commits[-commits_at_once:]:
             lines = repository.format_message(commit, format_str)
-            map(irc.reply, lines)
+            list(map(irc.reply, lines))
 
     def _poll(self):
         # Note that polling happens in two steps:
@@ -492,8 +492,8 @@ class Git(callbacks.PluginRegexp):
         if self.registryValue('shaSnarfing'):
             sha = match.group('sha')
             channel = msg.args[0]
-            repositories = filter(lambda r: channel in r.channels,
-                                  self.repository_list)
+            repositories = [r for r in self.repository_list if channel in
+                    r.channels]
             for repository in repositories:
                 commit = repository.get_commit(sha)
                 if commit:
