@@ -294,7 +294,7 @@ class Git(callbacks.PluginRegexp):
         self._stop_polling()
         try:
             self._read_config()
-        except Exception, e:
+        except Exception as e:
             if 'reply' in dir(irc):
                 irc.reply('Warning: %s' % str(e))
             else:
@@ -353,7 +353,7 @@ class Git(callbacks.PluginRegexp):
             n = len(self.repository_list)
             irc.reply('Git reinitialized with %d %s.' %
                       (n, plural(n, 'repository')))
-        except Exception, e:
+        except Exception as e:
             irc.reply('Warning: %s' % str(e))
 
     def repositories(self, irc, msg, args, channel):
@@ -451,7 +451,7 @@ class Git(callbacks.PluginRegexp):
                         for irc, channel in targets:
                             self._display_commits(irc, channel, repository,
                                                   commits)
-                    except Exception, e:
+                    except Exception as e:
                         log_error('Exception in _poll repository %s: %s' %
                                 (repository.short_name, str(e)))
                     finally:
@@ -460,7 +460,7 @@ class Git(callbacks.PluginRegexp):
                     log.info('Postponing repository read: %s: Locked.' %
                         repository.long_name)
             self._schedule_next_event()
-        except Exception, e:
+        except Exception as e:
             log_error('Exception in _poll(): %s' % str(e))
             traceback.print_exc(e)
 
@@ -506,14 +506,14 @@ class Git(callbacks.PluginRegexp):
             try:
                 self.fetcher.stop()
                 self.fetcher.join() # This might take time, but it's safest.
-            except Exception, e:
+            except Exception as e:
                 log_error('Stopping fetcher: %s' % str(e))
             self.fetcher = None
         try:
             schedule.removeEvent(self.name())
         except KeyError:
             pass
-        except Exception, e:
+        except Exception as e:
             log_error('Stopping scheduled task: %s' % str(e))
 
 class GitFetcher(threading.Thread):
@@ -557,14 +557,14 @@ class GitFetcher(threading.Thread):
                     if repository.lock.acquire(blocking=False):
                         try:
                             repository.fetch()
-                        except Exception, e:
+                        except Exception as e:
                             repository.record_error(e)
                         finally:
                             repository.lock.release()
                     else:
                         log_info('Postponing repository fetch: %s: Locked.' %
                                  repository.long_name)
-            except Exception, e:
+            except Exception as e:
                 log_error('Exception checking repository %s: %s' %
                           (repository.short_name, str(e)))
             # Wait for the next periodic check
