@@ -34,7 +34,10 @@ import supybot.schedule as schedule
 import supybot.log as log
 import supybot.world as world
 
-import ConfigParser
+try:
+    import ConfigParser
+except ImportError:
+    import configparser as ConfigParser
 from functools import wraps
 import os
 import threading
