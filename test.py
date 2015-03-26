@@ -87,7 +87,7 @@ class PluginTestCaseUtilMixin(object):
     def assertResponses(self, query, expectedResponses, **kwargs):
         "Run a command and assert that it returns the given list of replies."
         responses = self._feedMsgLoop(query, **kwargs)
-        responses = map(lambda m: m.args[1], responses)
+        responses = [m.args[1] for m in responses]
         self.assertEqual(responses, expectedResponses,
                          '\nActual:\n%s\n\nExpected:\n%s' %
                          ('\n'.join(responses), '\n'.join(expectedResponses)))
