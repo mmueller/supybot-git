@@ -326,7 +326,7 @@ class Git(callbacks.PluginRegexp):
         Display the last commits on the named repository. [count] defaults to
         1 if unspecified.
         """
-        matches = [r for r in self.repository_list if r.shortname == name]
+        matches = [r for r in self.repository_list if r.short_name == name]
         if not matches:
             irc.reply('No configured repository named %s.' % name)
             return
