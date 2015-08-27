@@ -41,8 +41,6 @@ import threading
 import time
 import traceback
 
-# 'import git' is performed during plugin initialization.
-#
 # The GitPython library has different APIs depending on the version installed.
 # (0.1.x, 0.3.x supported)
 GIT_API_VERSION = -1
@@ -66,6 +64,18 @@ def plural(count, singular, plural=None):
     if singular[-1] == 'y':
         return singular[:-1] + 'ies'
     return singular + 's'
+
+try:
+    import git
+except ImportError:
+    raise callbacks.Error("GitPython is not installed.")
+if not git.__version__.startswith('0.'):
+    raise callbacks.Error("Unsupported GitPython version.")
+GIT_API_VERSION = int(git.__version__[2])
+if not GIT_API_VERSION in [1, 3]:
+    log_error('GitPython version %s unrecognized, using 0.3.x API.'
+            % git.__version__)
+    GIT_API_VERSION = 3
 
 def synchronized(tlockname):
     """
@@ -282,7 +292,6 @@ class Git(callbacks.PluginRegexp):
     unaddressedRegexps = [ '_snarf' ]
 
     def __init__(self, irc):
-        self.init_git_python()
         self.__parent = super(Git, self)
         self.__parent.__init__(irc)
         # Workaround the fact that self.log already exists in plugins
@@ -298,20 +307,6 @@ class Git(callbacks.PluginRegexp):
                 # During bot startup, there is no one to reply to.
                 log_warning(str(e))
         self._schedule_next_event()
-
-    def init_git_python(self):
-        global GIT_API_VERSION, git
-        try:
-            import git
-        except ImportError:
-            raise Exception("GitPython is not installed.")
-        if not git.__version__.startswith('0.'):
-            raise Exception("Unsupported GitPython version.")
-        GIT_API_VERSION = int(git.__version__[2])
-        if not GIT_API_VERSION in [1, 3]:
-            log_error('GitPython version %s unrecognized, using 0.3.x API.'
-                    % git.__version__)
-            GIT_API_VERSION = 3
 
     def die(self):
         self._stop_polling()
