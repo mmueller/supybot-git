@@ -40,6 +40,7 @@ import os
 import threading
 import time
 import traceback
+from distutils.version import StrictVersion
 
 # 'import git' is performed during plugin initialization.
 #
@@ -305,13 +306,10 @@ class Git(callbacks.PluginRegexp):
             import git
         except ImportError:
             raise Exception("GitPython is not installed.")
-        if not git.__version__.startswith('0.'):
-            raise Exception("Unsupported GitPython version.")
-        GIT_API_VERSION = int(git.__version__[2])
-        if not GIT_API_VERSION in [1, 3]:
-            log_error('GitPython version %s unrecognized, using 0.3.x API.'
-                    % git.__version__)
+        if StrictVersion(git.__version__) >= StrictVersion("0.3.0"):
             GIT_API_VERSION = 3
+        else:
+            GIT_API_VERSION = 1
 
     def die(self):
         self._stop_polling()
