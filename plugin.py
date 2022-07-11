@@ -474,7 +474,7 @@ class Git(callbacks.PluginRegexp):
     def _schedule_next_event(self):
         period = self.registryValue('pollPeriod')
         if period > 0:
-            if not self.fetcher or not self.fetcher.isAlive():
+            if not self.fetcher or not self.fetcher.is_alive():
                 self.fetcher = GitFetcher(self.repository_list, period)
                 self.fetcher.start()
             schedule.addEvent(self._poll, time.time() + period,
