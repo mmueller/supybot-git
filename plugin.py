@@ -34,12 +34,13 @@ import supybot.schedule as schedule
 import supybot.log as log
 import supybot.world as world
 
-import ConfigParser
+import configparser
 from functools import wraps
 import os
 import threading
 import time
 import traceback
+from distutils.version import StrictVersion
 
 # 'import git' is performed during plugin initialization.
 #
@@ -104,7 +105,7 @@ class Repository(object):
             if name not in options:
                 raise Exception('Section %s missing required value: %s' %
                         (long_name, name))
-        for name, value in options.items():
+        for name, value in list(options.items()):
             if name not in required_values and name not in optional_values:
                 raise Exception('Section %s contains unrecognized value: %s' %
                         (long_name, name))
@@ -172,7 +173,8 @@ class Repository(object):
             rev = "%s..%s" % (self.last_commit, self.branch)
             # Workaround for GitPython bug:
             # https://github.com/gitpython-developers/GitPython/issues/61
-            self.repo.odb.update_cache()
+            if hasattr(self.repo.odb, 'update_cache'):
+                self.repo.odb.update_cache()
             result = self.repo.iter_commits(rev)
         else:
             raise Exception("Unsupported API version: %d" % GIT_API_VERSION)
@@ -241,7 +243,7 @@ class Repository(object):
             outline = ''
             for c in line:
                 if mode == MODE_SUBST:
-                    if c in subst.keys():
+                    if c in list(subst.keys()):
                         outline += subst[c]
                         mode = MODE_NORMAL
                     elif c == '(':
@@ -260,7 +262,7 @@ class Repository(object):
                     mode = MODE_SUBST
                 else:
                     outline += c
-            result.append(outline.encode('utf-8'))
+            result.append(outline)
         return result
 
     @synchronized('lock')
@@ -291,7 +293,7 @@ class Git(callbacks.PluginRegexp):
         self._stop_polling()
         try:
             self._read_config()
-        except Exception, e:
+        except Exception as e:
             if 'reply' in dir(irc):
                 irc.reply('Warning: %s' % str(e))
             else:
@@ -305,13 +307,10 @@ class Git(callbacks.PluginRegexp):
             import git
         except ImportError:
             raise Exception("GitPython is not installed.")
-        if not git.__version__.startswith('0.'):
-            raise Exception("Unsupported GitPython version.")
-        GIT_API_VERSION = int(git.__version__[2])
-        if not GIT_API_VERSION in [1, 3]:
-            log_error('GitPython version %s unrecognized, using 0.3.x API.'
-                    % git.__version__)
+        if StrictVersion(git.__version__) >= StrictVersion("0.3.0"):
             GIT_API_VERSION = 3
+        else:
+            GIT_API_VERSION = 1
 
     def die(self):
         self._stop_polling()
@@ -323,7 +322,7 @@ class Git(callbacks.PluginRegexp):
         Display the last commits on the named repository. [count] defaults to
         1 if unspecified.
         """
-        matches = filter(lambda r: r.short_name == name, self.repository_list)
+        matches = [r for r in self.repository_list if r.short_name == name]
         if not matches:
             irc.reply('No configured repository named %s.' % name)
             return
@@ -350,7 +349,7 @@ class Git(callbacks.PluginRegexp):
             n = len(self.repository_list)
             irc.reply('Git reinitialized with %d %s.' %
                       (n, plural(n, 'repository')))
-        except Exception, e:
+        except Exception as e:
             irc.reply('Warning: %s' % str(e))
 
     def repositories(self, irc, msg, args, channel):
@@ -358,8 +357,7 @@ class Git(callbacks.PluginRegexp):
 
         Display the names of known repositories configured for this channel.
         """
-        repositories = filter(lambda r: channel in r.channels,
-                              self.repository_list)
+        repositories = [r for r in self.repository_list if channel in r.channels]
         if not repositories:
             irc.reply('No repositories configured for this channel.')
             return
@@ -413,7 +411,7 @@ class Git(callbacks.PluginRegexp):
         format_str = repository.commit_reply or repository.commit_message
         for commit in commits[-commits_at_once:]:
             lines = repository.format_message(commit, format_str)
-            map(irc.reply, lines)
+            list(map(irc.reply, lines))
 
     def _poll(self):
         # Note that polling happens in two steps:
@@ -448,7 +446,7 @@ class Git(callbacks.PluginRegexp):
                         for irc, channel in targets:
                             self._display_commits(irc, channel, repository,
                                                   commits)
-                    except Exception, e:
+                    except Exception as e:
                         log_error('Exception in _poll repository %s: %s' %
                                 (repository.short_name, str(e)))
                     finally:
@@ -457,7 +455,7 @@ class Git(callbacks.PluginRegexp):
                     log.info('Postponing repository read: %s: Locked.' %
                         repository.long_name)
             self._schedule_next_event()
-        except Exception, e:
+        except Exception as e:
             log_error('Exception in _poll(): %s' % str(e))
             traceback.print_exc(e)
 
@@ -467,7 +465,7 @@ class Git(callbacks.PluginRegexp):
         config = self.registryValue('configFile')
         if not os.access(config, os.R_OK):
             raise Exception('Cannot access configuration file: %s' % config)
-        parser = ConfigParser.RawConfigParser()
+        parser = configparser.RawConfigParser()
         parser.read(config)
         for section in parser.sections():
             options = dict(parser.items(section))
@@ -476,7 +474,7 @@ class Git(callbacks.PluginRegexp):
     def _schedule_next_event(self):
         period = self.registryValue('pollPeriod')
         if period > 0:
-            if not self.fetcher or not self.fetcher.isAlive():
+            if not self.fetcher or not self.fetcher.is_alive():
                 self.fetcher = GitFetcher(self.repository_list, period)
                 self.fetcher.start()
             schedule.addEvent(self._poll, time.time() + period,
@@ -489,8 +487,7 @@ class Git(callbacks.PluginRegexp):
         if self.registryValue('shaSnarfing'):
             sha = match.group('sha')
             channel = msg.args[0]
-            repositories = filter(lambda r: channel in r.channels,
-                                  self.repository_list)
+            repositories = [r for r in self.repository_list if channel in r.channels]
             for repository in repositories:
                 commit = repository.get_commit(sha)
                 if commit:
@@ -503,14 +500,14 @@ class Git(callbacks.PluginRegexp):
             try:
                 self.fetcher.stop()
                 self.fetcher.join() # This might take time, but it's safest.
-            except Exception, e:
+            except Exception as e:
                 log_error('Stopping fetcher: %s' % str(e))
             self.fetcher = None
         try:
             schedule.removeEvent(self.name())
         except KeyError:
             pass
-        except Exception, e:
+        except Exception as e:
             log_error('Stopping scheduled task: %s' % str(e))
 
 class GitFetcher(threading.Thread):
@@ -554,14 +551,14 @@ class GitFetcher(threading.Thread):
                     if repository.lock.acquire(blocking=False):
                         try:
                             repository.fetch()
-                        except Exception, e:
+                        except Exception as e:
                             repository.record_error(e)
                         finally:
                             repository.lock.release()
                     else:
                         log_info('Postponing repository fetch: %s: Locked.' %
                                  repository.long_name)
-            except Exception, e:
+            except Exception as e:
                 log_error('Exception checking repository %s: %s' %
                           (repository.short_name, str(e)))
             # Wait for the next periodic check
